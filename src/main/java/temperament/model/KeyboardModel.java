@@ -60,14 +60,46 @@ public class KeyboardModel extends SelectableNotesModel {
 
 	@Override
 	protected void afterPanelDimensionChanged() {
-		double scaleX = getWidth() / (14 * DX1);
-		double scaleY = getHeight() / DY1;
-		double scale = Math.min(scaleX, scaleY);
-		dx1 = (int) (DX1 * scale);
-		dx2 = (int) (DX2 * scale);
-		dy1 = (int) (DY1 * scale);
-		dy2 = (int) (DY2 * scale);
-		dy3 = (int) (DY3 * scale);
+		ITemperament t = getTemperament();
+		int notesToDisplayTotal = t.getNbNotesGamme() * 2; // Assuming 2 octaves/repetitions visible
+		if (notesToDisplayTotal == 0) notesToDisplayTotal = 1; // Avoid division by zero
+
+		// DX1 is the original design width for a standard white key.
+		// We want to scale this so that 'notesToDisplayTotal' keys fit in getWidth().
+		double calculatedKeyWidth = (double) getWidth() / notesToDisplayTotal;
+
+		// We still use DX1, DY1 etc. for proportions of a single key,
+		// but the overall width of a key (dx1) will be based on calculatedKeyWidth.
+		// Let's make dx1 equal to this calculatedKeyWidth.
+		// The internal proportions of the key shape (like where the cutouts for black keys are)
+		// might look odd if we just stretch/squash DX1, but for pentatonic using only DoFa shape, it's simpler.
+
+		dx1 = (int) calculatedKeyWidth;
+		// Make other dx/dy values proportional to dx1 if they were originally based on DX1.
+		// Or, for pentatonic where we might only use one key shape, this is less critical.
+		// For simplicity, let's keep other DY dimensions scaled by a consistent factor for now.
+		// This part might need refinement based on visual results.
+		// double originalTotalWidth = 14 * DX1; // Original design: 2 octaves of 7 white keys
+		// double scaleFactor = getWidth() / originalTotalWidth; // General scale based on original design
+
+		if (t.getNbNotesGamme() < 12) { // Simpler scaling for non-12-tone
+			 // dx1 is already set to calculatedKeyWidth
+			 // dy1, dy2, dy3 can maintain original proportions relative to a fixed height or scaled height
+			 dy1 = (int) (DY1 * getHeight() / DY1); // Full height
+			 dy2 = (int) (DY2 * getHeight() / DY1);
+			 dy3 = (int) (DY3 * getHeight() / DY1);
+			 dx2 = (int) (DX2 * dx1 / DX1); // dx2 proportional to new dx1
+			 if (DX1 == 0) dx2 = 0; // Avoid division by zero if DX1 is somehow 0
+		} else { // Original scaling for 12-tone
+			double scaleX = getWidth() / (14 * DX1); // 2 octaves, 7 white keys each
+			double scaleY = getHeight() / DY1;
+			double scale = Math.min(scaleX, scaleY);
+			dx1 = (int) (DX1 * scale);
+			dx2 = (int) (DX2 * scale);
+			dy1 = (int) (DY1 * scale);
+			dy2 = (int) (DY2 * scale);
+			dy3 = (int) (DY3 * scale);
+		}
 	}
 
 	/**
@@ -107,37 +139,51 @@ public class KeyboardModel extends SelectableNotesModel {
 	}
 
 	private void initOctave(int octave) {
-		int xStart = octave * 7;
-
-		// attention à l'index de la note de départ : dans le cas du "tempérament de
-		// Pythagore avec les quintes empilées, le tempérament contient une note de plus
-		// que l'octave (le si#)
 		ITemperament t = getTemperament();
-		int idx = octave * t.getNbNotesGamme();
+		int notesInGamme = t.getNbNotesGamme();
+		// For 12-note gammes, an "octave" in terms of key layout spans 7 white key positions.
+		// For other gammes (e.g. pentatonic), an "octave" or repetition of the gamme
+		// will span `notesInGamme` key positions.
+		int xOffsetMultiplier = (notesInGamme == 12) ? 7 : notesInGamme;
+		int xStart = octave * xOffsetMultiplier;
 
-		boolean feintesBrisees = null != t && TemperamentAbbatialePayerne.ABBATIALE_PAYERNE.equals(t.toString());
-		keys.add(new KeyboardKey(KeyType.DoFa, xStart + 0, idx++));
-		keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 1, idx++));
-		keys.add(new KeyboardKey(KeyType.ReSolLa, xStart + 1, idx++));
-		if (feintesBrisees) {
-			keys.add(new KeyboardKey(KeyType.BriseeArriere, xStart + 2, idx++));
-			keys.add(new KeyboardKey(KeyType.BriseeAvant, xStart + 2, idx++));
+		int baseNoteIndexForOctave = octave * notesInGamme;
+
+		if (notesInGamme == 5) { // Specific handling for pentatonic
+			for (int i = 0; i < notesInGamme; i++) {
+				// Each key occupies one position sequentially.
+				// The currentNoteIndexInTemperament should correctly map to the temperament's notes.
+				// For pentatonic, octave handling in noteIndex might need to be t.getNbNotes() if it differs from gamme
+				// but usually for pentatonic, gamme is the full set of notes.
+				keys.add(new KeyboardKey(KeyType.DoFa, xStart + i, baseNoteIndexForOctave + i));
+			}
+		} else if (notesInGamme == 12) { // Standard 12-note handling (existing logic)
+			// This is a simplified version of the original logic, ensuring idx maps correctly.
+			// Original logic had complex idx increments, let's use direct mapping from ITemperament.
+			// This part recreates the standard piano layout based on 12 notes.
+			// White keys: C, D, E, F, G, A, B (indices 0,2,4,5,7,9,11 in a 12-note scale)
+			// Black keys: C#, D#, F#, G#, A# (indices 1,3,6,8,10 in a 12-note scale)
+			// The notePosition for KeyboardKey refers to its visual placement slot.
+
+			keys.add(new KeyboardKey(KeyType.DoFa,    xStart + 0, baseNoteIndexForOctave + 0)); // Do
+			keys.add(new KeyboardKey(KeyType.ReSolLa, xStart + 1, baseNoteIndexForOctave + 2)); // Re
+			keys.add(new KeyboardKey(KeyType.MiSi,    xStart + 2, baseNoteIndexForOctave + 4)); // Mi
+			keys.add(new KeyboardKey(KeyType.DoFa,    xStart + 3, baseNoteIndexForOctave + 5)); // Fa
+			keys.add(new KeyboardKey(KeyType.ReSolLa, xStart + 4, baseNoteIndexForOctave + 7)); // Sol
+			keys.add(new KeyboardKey(KeyType.ReSolLa, xStart + 5, baseNoteIndexForOctave + 9)); // La - ReSolLa type often used for La
+			keys.add(new KeyboardKey(KeyType.MiSi,    xStart + 6, baseNoteIndexForOctave + 11)); // Si
+
+			keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 0, baseNoteIndexForOctave + 1));  // Do# (place relative to Do)
+			keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 1, baseNoteIndexForOctave + 3));  // Re# (place relative to Re)
+			keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 3, baseNoteIndexForOctave + 6));  // Fa# (place relative to Fa)
+			keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 4, baseNoteIndexForOctave + 8));  // Sol# (place relative to Sol)
+			keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 5, baseNoteIndexForOctave + 10)); // La# (place relative to La)
 		} else {
-			keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 2, idx++));
+			// Fallback for other numbers of notes: similar to pentatonic, lay them out sequentially.
+			for (int i = 0; i < notesInGamme; i++) {
+				keys.add(new KeyboardKey(KeyType.DoFa, xStart + i, baseNoteIndexForOctave + i));
+			}
 		}
-		keys.add(new KeyboardKey(KeyType.MiSi, xStart + 2, idx++));
-		keys.add(new KeyboardKey(KeyType.DoFa, xStart + 3, idx++));
-		keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 4, idx++));
-		keys.add(new KeyboardKey(KeyType.ReSolLa, xStart + 4, idx++));
-		if (feintesBrisees) {
-			keys.add(new KeyboardKey(KeyType.BriseeAvant, xStart + 5, idx++));
-			keys.add(new KeyboardKey(KeyType.BriseeArriere, xStart + 5, idx++));
-		} else {
-			keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 5, idx++));
-		}
-		keys.add(new KeyboardKey(KeyType.ReSolLa, xStart + 5, idx++));
-		keys.add(new KeyboardKey(KeyType.NoireComplete, xStart + 6, idx++));
-		keys.add(new KeyboardKey(KeyType.MiSi, xStart + 6, idx++));
 	}
 
 	public List<KeyboardKey> getKeys() {

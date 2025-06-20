@@ -20,6 +20,8 @@ import temperament.musical.TemperamentWerckmeister1;
 import temperament.musical.TemperamentWerckmeister2;
 import temperament.musical.TemperamentWerckmeister3;
 import temperament.musical.TemperamentWerckmeister4;
+import temperament.musical.MajorPentatonicTemperament;
+import temperament.musical.MinorPentatonicTemperament;
 import temperament.musical.json.TemperamentJsonVisitor;
 
 /**
